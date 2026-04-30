@@ -1,48 +1,35 @@
+import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import logging
 import plotly.graph_objects as go
 import requests
-from datetime import datetime, time
-from typing import List, Dict, Optional
-from enum import Enum
 import warnings
 
-# --- SETUP & LOGGING ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 warnings.filterwarnings('ignore')
 
-class TradeDirection(Enum):
-    LONG = "LONG"
-    SHORT = "SHORT"
-    NEUTRAL = "NEUTRAL"
+# --- STREAMLIT PAGE SETUP ---
+st.set_page_config(page_title="SMC Coder Dashboard", layout="wide", page_icon="🤖")
 
 # --- MAIN BOT CLASS ---
 class EnhancedICTBot:
-    def __init__(self, symbol: str, timeframes: List[str] = None, lookback: int = 100):
+    def __init__(self, symbol: str, timeframes=None, lookback: int = 100):
         self.symbol = symbol
         self.timeframes = timeframes or ['15m', '1h', '1d']
         self.lookback = lookback
         self.data = {}
-        self.levels = {'bullish_fvg': [], 'bearish_fvg': [], 'demand_zones': [], 'supply_zones': [], 'bos': [], 'choch': []}
-        logger.info(f"🤖 The SMC Coder Bot Initialized for {symbol}")
+        self.levels = {'bullish_fvg': [], 'bearish_fvg': [], 'bos': [], 'choch': []}
 
-    # --- 1. DATA FETCHING & INDICATORS ---
     def fetch_all_data(self) -> bool:
         try:
             for tf in self.timeframes:
                 ticker = yf.Ticker(self.symbol)
-                
-                # Fixing YFinance Intraday Period Limits
                 period = f"{self.lookback}d"
                 if tf in ['15m', '5m', '1m'] and self.lookback > 59: 
                     period = "59d"
                 
                 df = ticker.history(period=period, interval=tf)
                 if not df.empty:
-                    # Calculate ATR for dynamic filtering
                     df['TR'] = np.maximum(
                         df['High'] - df['Low'], 
                         np.maximum(
@@ -52,13 +39,11 @@ class EnhancedICTBot:
                     )
                     df['ATR'] = df['TR'].rolling(window=14).mean()
                     self.data[tf] = df
-                    logger.info(f"✅ Data fetched for {tf}")
             return True
         except Exception as e:
-            logger.error(f"Data Fetch Error: {e}")
+            st.error(f"Data Fetch Error: {e}")
             return False
 
-    # --- 2. MARKET STRUCTURE (BOS & CHoCH) ---
     def detect_structure(self, tf='1h', window=5):
         df = self.data.get(tf)
         if df is None: return
@@ -67,71 +52,38 @@ class EnhancedICTBot:
             is_high = df['High'].iloc[i] == df['High'].iloc[i-window:i+window].max()
             is_low = df['Low'].iloc[i] == df['Low'].iloc[i-window:i+window].min()
 
-            # BOS (Break of Structure)
             if df['Close'].iloc[-1] > df['High'].iloc[i] and is_high:
-                self.levels['bos'].append({'time': df.index[i], 'level': df['High'].iloc[i], 'type': 'Bullish BOS'})
+                self.levels['bos'].append({'level': df['High'].iloc[i]})
             
-            # CHoCH (Change of Character)
             if df['Close'].iloc[-1] < df['Low'].iloc[i] and is_high:
-                self.levels['choch'].append({'time': df.index[i], 'level': df['Low'].iloc[i], 'type': 'Bearish CHoCH'})
+                self.levels['choch'].append({'level': df['Low'].iloc[i]})
 
-    # --- 3. FAIR VALUE GAPS (ATR FILTERED) ---
     def detect_fvg(self, tf='1h'):
         df = self.data.get(tf)
         if df is None: return
         
         for i in range(2, len(df)):
             atr = df['ATR'].iloc[i]
-            # Bullish FVG
             if df['Low'].iloc[i] > df['High'].iloc[i-2]:
                 gap = df['Low'].iloc[i] - df['High'].iloc[i-2]
-                if gap > (atr * 0.2): # Minimum gap filter
+                if gap > (atr * 0.2):
                     self.levels['bullish_fvg'].append({
                         'top': df['Low'].iloc[i], 
-                        'bottom': df['High'].iloc[i-2], 
-                        'time': df.index[i]
+                        'bottom': df['High'].iloc[i-2]
                     })
 
-    # --- 4. DISCORD WEBHOOK ALERTS ---
-    def send_discord_alert(self, title: str, description: str, color: int = 0x00FF00):
-        # Yahan apna Discord Webhook URL paste karein
-        webhook_url = "YOUR_DISCORD_WEBHOOK_URL_HERE" 
-        
-        if webhook_url == "YOUR_DISCORD_WEBHOOK_URL_HERE":
-            logger.warning("⚠️ Discord webhook URL add nahi kiya gaya hai. Alert skip ho raha hai.")
-            return
-
-        data = {
-            "username": "The SMC Coder Bot",
-            "embeds": [
-                {
-                    "title": title,
-                    "description": description,
-                    "color": color,
-                    "footer": {"text": "Developed by The SMC Coder 🤖"}
-                }
-            ]
-        }
-        
-        try:
-            response = requests.post(webhook_url, json=data)
-            if response.status_code == 204:
-                logger.info(f"🔔 Discord Alert Sent: {title}")
-            else:
-                logger.error(f"Discord Alert Failed: Code {response.status_code}")
-        except Exception as e:
-            logger.error(f"Discord Webhook Error: {e}")
-
-    # --- 5. INTERACTIVE DASHBOARD (PLOTLY) ---
+    # STREAMLIT CHART PLOTTING
     def plot_dashboard(self, tf='1h'):
-        df = self.data.get(tf).tail(100) # Last 100 candles for clean view
+        df = self.data.get(tf)
+        if df is None: return
+        df = df.tail(100) 
+        
         fig = go.Figure(data=[go.Candlestick(
             x=df.index, open=df['Open'], high=df['High'], 
             low=df['Low'], close=df['Close'], name='Price'
         )])
 
-        # Draw Bullish FVGs on Chart
-        for fvg in self.levels['bullish_fvg'][-5:]: # Highlight last 5 FVGs
+        for fvg in self.levels['bullish_fvg'][-5:]:
             fig.add_shape(
                 type="rect", x0=df.index[0], x1=df.index[-1], 
                 y0=fvg['bottom'], y1=fvg['top'],
@@ -141,39 +93,38 @@ class EnhancedICTBot:
         fig.update_layout(
             title=f"{self.symbol} - SMC Custom Dashboard", 
             template="plotly_dark", 
-            xaxis_rangeslider_visible=False
+            xaxis_rangeslider_visible=False,
+            height=600
         )
-        fig.show()
+        st.plotly_chart(fig, use_container_width=True)  # <--- Ye Streamlit par chart dikhata hai
 
-    # --- 6. RUN MASTER ANALYSIS ---
-    def run_analysis(self):
-        logger.info(f"🔍 Starting Analysis for {self.symbol}...")
+# --- STREAMLIT UI (User Interface) ---
+st.title("🤖 The SMC Coder - Web Dashboard")
+st.markdown("Automated Market Structure & Liquidity Hunter")
+
+# User se coin/stock ka naam lene ke liye box
+col1, col2 = st.columns([1, 3])
+with col1:
+    user_symbol = st.text_input("Enter Asset Symbol:", value="EURUSD=X")
+    run_btn = st.button("Run SMC Analysis", type="primary")
+
+# Jab button press ho
+if run_btn:
+    with st.spinner("Analyzing Smart Money Footprints..."):
+        bot = EnhancedICTBot(symbol=user_symbol, lookback=50)
         
-        if self.fetch_all_data():
-            self.detect_structure()
-            self.detect_fvg()
-            logger.info("✅ Core Analysis Complete.")
+        if bot.fetch_all_data():
+            bot.detect_structure()
+            bot.detect_fvg()
             
-            # Prepare & Send Alert
-            total_fvg = len(self.levels['bullish_fvg'])
-            total_bos = len(self.levels['bos'])
+            st.success("Analysis Complete!")
             
-            alert_msg = f"**Symbol:** {self.symbol}\n"
-            alert_msg += f"**Bullish FVGs Found:** {total_fvg}\n"
-            alert_msg += f"**Structure Breaks (BOS):** {total_bos}\n"
-            alert_msg += "Open your custom dashboard to check liquidity zones! 🎯"
+            # Stats dikhane ke liye
+            s1, s2 = st.columns(2)
+            s1.metric("Bullish FVGs Found", len(bot.levels['bullish_fvg']))
+            s2.metric("Structure Breaks (BOS)", len(bot.levels['bos']))
             
-            self.send_discord_alert(
-                title="🚨 High Probability Setup Detected!", 
-                description=alert_msg, 
-                color=0x00FF00
-            )
-            
-            # Show Chart
-            self.plot_dashboard()
-
-# --- EXECUTION ---
-if __name__ == "__main__":
-    # Aap is symbol ko Gold (GC=F) ya kisi Nifty stock mein badal sakte hain
-    bot = EnhancedICTBot(symbol='EURUSD=X', lookback=50)
-    bot.run_analysis()
+            # Chart draw karein
+            bot.plot_dashboard()
+        else:
+            st.error("Failed to fetch data. Please check the symbol name.")
