@@ -105,33 +105,38 @@ class EnhancedICTBot:
         st.plotly_chart(fig, use_container_width=True)
 
 
-# --- STREAMLIT UI (User Interface) ---
-st.title("🤖 The SMC Coder - Web Dashboard")
-st.markdown("Automated Market Structure & Liquidity Hunter")
+# --- STREAMLIT UI UPDATE ---
+st.title("🤖 The SMC Coder - Live Dashboard")
 
-# User se coin/stock ka naam lene ke liye box
-col1, col2 = st.columns([1, 3])
+col1, col2, col3 = st.columns([2, 1, 1])
+
 with col1:
-    user_symbol = st.text_input("Enter Asset Symbol:", value="EURUSD=X")
-    run_btn = st.button("Run SMC Analysis", type="primary")
+    user_symbol = st.text_input("Enter Asset Symbol (e.g. BTC-USD, ^NSEI):", value="EURUSD=X")
 
-# Jab button press ho
+with col2:
+    # Yahan se aap timeframe select kar sakte hain
+    selected_tf = st.selectbox("Select Timeframe:", options=['1m', '5m', '15m', '1h', '1d'], index=2)
+
+with col3:
+    st.write("###") # Thoda gap dene ke liye
+    run_btn = st.button("Run Live Analysis", type="primary")
+
 if run_btn:
-    with st.spinner("Analyzing Smart Money Footprints..."):
-        bot = EnhancedICTBot(symbol=user_symbol, lookback=50)
+    with st.spinner(f"Fetching {selected_tf} data..."):
+        # Humne 'selected_tf' ko bot mein pass kiya
+        bot = EnhancedICTBot(symbol=user_symbol, lookback=50, timeframes=[selected_tf])
         
         if bot.fetch_all_data():
-            bot.detect_structure()
-            bot.detect_fvg()
+            bot.detect_structure(tf=selected_tf)
+            bot.detect_fvg(tf=selected_tf)
             
-            st.success("Analysis Complete!")
+            st.success(f"Analysis Done for {selected_tf} timeframe!")
             
-            # Stats dikhane ke liye
+            # Stats
             s1, s2 = st.columns(2)
             s1.metric("Bullish FVGs Found", len(bot.levels['bullish_fvg']))
-            s2.metric("Structure Breaks (BOS)", len(bot.levels['bos']))
+            s2.metric("Structure Breaks", len(bot.levels['bos']))
             
-            # Chart draw karein
-            bot.plot_dashboard()
-        else:
-            st.error("Failed to fetch data. Please check the symbol name.")
+            # Chart
+            bot.plot_dashboard(tf=selected_tf)
+
