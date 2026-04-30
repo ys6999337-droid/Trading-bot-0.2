@@ -133,9 +133,13 @@ class EnhancedICTBot:
             xaxis_rangeslider_visible=False,
             xaxis=dict(showgrid=False),
             yaxis=dict(showgrid=True, gridcolor="#363c4e", side='right'), # TV y-axis right mein hota hai
-            height=650, margin=dict(l=10, r=10, b=10, t=40)
+            height=650, margin=dict(l=10, r=10, b=10, t=40),
+            dragmode='pan'  # <--- FIX 1: Isse chart drag karne par TV ki tarah move hoga
         )
-        st.plotly_chart(fig, use_container_width=True)
+        
+        # <--- FIX 2: config={'scrollZoom': True} se pinch-to-zoom aur mouse wheel zoom on ho jayega
+        st.plotly_chart(fig, use_container_width=True, config={'scrollZoom': True, 'displayModeBar': False})
+
 
 # --- STREAMLIT UI ---
 st.title("🎯 The SMC Sniper - Pro Dashboard")
