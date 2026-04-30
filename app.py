@@ -69,7 +69,8 @@ class EnhancedICTBot:
                 if gap > (atr * 0.2):
                     self.levels['bullish_fvg'].append({
                         'top': df['Low'].iloc[i], 
-                        'bottom': df['High'].iloc[i-2]
+                        'bottom': df['High'].iloc[i-2],
+                        'time': df.index[i]  # <-- Yahan time add kiya taaki pata chale box kahan se draw karna hai
                     })
 
     # STREAMLIT CHART PLOTTING
@@ -84,10 +85,15 @@ class EnhancedICTBot:
         )])
 
         for fvg in self.levels['bullish_fvg'][-5:]:
+            # Box wahi se shuru hoga jahan FVG bana tha
+            start_time = fvg['time'] if fvg['time'] >= df.index[0] else df.index[0]
+
             fig.add_shape(
-                type="rect", x0=df.index[0], x1=df.index[-1], 
+                type="rect", 
+                x0=start_time, x1=df.index[-1], 
                 y0=fvg['bottom'], y1=fvg['top'],
-                fillcolor="rgba(0, 255, 0, 0.2)", line_width=0
+                fillcolor="rgba(0, 255, 0, 0.2)", 
+                line=dict(color="rgba(0, 255, 0, 0.7)", width=1) # Box par border add kiya clean look ke liye
             )
 
         fig.update_layout(
@@ -96,7 +102,8 @@ class EnhancedICTBot:
             xaxis_rangeslider_visible=False,
             height=600
         )
-        st.plotly_chart(fig, use_container_width=True)  # <--- Ye Streamlit par chart dikhata hai
+        st.plotly_chart(fig, use_container_width=True)
+
 
 # --- STREAMLIT UI (User Interface) ---
 st.title("🤖 The SMC Coder - Web Dashboard")
